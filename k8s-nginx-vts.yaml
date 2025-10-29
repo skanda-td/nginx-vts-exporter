@@ -1,0 +1,114 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: nginx-metrics
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-config
+  namespace: nginx-metrics
+data:
+  nginx.conf: |
+    worker_processes auto;
+    error_log /var/log/nginx/error.log warn;
+    pid /var/run/nginx.pid;
+
+    events {
+      worker_connections 1024;
+    }
+
+    http {
+      log_format main '$remote_addr - $remote_user [$time_local] "$request" '
+                      '$status $body_bytes_sent "$http_referer" '
+                      '"$http_user_agent" "$http_x_forwarded_for"';
+      access_log /var/log/nginx/access.log main;
+
+      # --- VTS module setup ---
+      vhost_traffic_status_zone;
+      vhost_traffic_status_filter_by_host on;
+
+      # Enable endpoint-based metrics
+      vhost_traffic_status_filter_by_set_key $uri endpoint;
+
+      server {
+        listen 8080;
+        server_name localhost;
+
+        location /app1 {
+          vhost_traffic_status_filter_by_set_key "app1" endpoint;
+          return 200 'Response from App1';
+          add_header Content-Type text/plain;
+        }
+
+        location /app2 {
+          vhost_traffic_status_filter_by_set_key "app2" endpoint;
+          return 200 'Response from App2';
+          add_header Content-Type text/plain;
+        }
+
+        location /app3 {
+          vhost_traffic_status_filter_by_set_key "app3" endpoint;
+          return 200 'Response from App3';
+          add_header Content-Type text/plain;
+        }
+
+        # Prometheus metrics endpoint
+        location /status {
+          vhost_traffic_status_display;
+          vhost_traffic_status_display_format prometheus;
+        }
+
+        # Simple health check endpoint
+        location /health {
+          return 200 'ok';
+          add_header Content-Type text/plain;
+        }
+      }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-vts
+  namespace: nginx-metrics
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nginx-vts
+  template:
+    metadata:
+      labels:
+        app: nginx-vts
+    spec:
+      imagePullSecrets:
+        - name: dockerhub-secret
+      containers:
+        - name: nginx
+          image: kmdstd/nginx-vts-demo:latest
+          ports:
+            - containerPort: 8080
+          volumeMounts:
+            - name: nginx-config
+              mountPath: /usr/local/nginx/conf/nginx.conf
+              subPath: nginx.conf
+      volumes:
+        - name: nginx-config
+          configMap:
+            name: nginx-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-vts
+  namespace: nginx-metrics
+  labels:
+    app: nginx-vts
+spec:
+  selector:
+    app: nginx-vts
+  ports:
+    - name: web
+      port: 8080
+      targetPort: 8080
