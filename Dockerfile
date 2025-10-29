@@ -24,9 +24,6 @@ RUN mkdir -p /etc/nginx/conf.d /usr/share/nginx/html && \
     echo "Nginx with VTS Module built successfully" > /usr/share/nginx/html/index.html && \
     apt-get remove -y build-essential git wget && apt-get autoremove -y && rm -rf /var/lib/apt/lists/* /tmp/*
 
-# Copy config into correct location
-COPY nginx.conf /usr/local/nginx/conf/nginx.conf
-
 EXPOSE 8080
 
 CMD ["/usr/local/nginx/sbin/nginx", "-g", "daemon off;"]
